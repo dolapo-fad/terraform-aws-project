@@ -1,111 +1,12 @@
-#VPC COMPONENTS
+module "vpc" {
+  source = "./modules/vpc"
 
-resource "aws_vpc" "terraform6_vpc" {
-  cidr_block = var.vpc_cidr
-
-  tags = {
-    Name = "terraform6_vpc"
-  }
+  vpc_cidr            = var.vpc_cidr
+  public_subnet1_cidr = var.public_subnet1_cidr
+  public_subnet2_cidr = var.public_subnet2_cidr
+  private_subnet1_cidr = var.private_subnet1_cidr
+  private_subnet2_cidr = var.private_subnet2_cidr
 }
-
-resource "aws_subnet" "public_subnet1" {
-  vpc_id            = aws_vpc.terraform6_vpc.id
-  cidr_block        = "10.0.0.0/24"
-  availability_zone = "us-east-1a"
-  map_public_ip_on_launch = true
-}
-
-resource "aws_subnet" "public_subnet2" {
-  vpc_id            = aws_vpc.terraform6_vpc.id
-  cidr_block        = "10.0.1.0/24"
-  availability_zone = "us-east-1b"
-  map_public_ip_on_launch = true
-}
-
-resource "aws_subnet" "private_subnet1" {
-  vpc_id            = aws_vpc.terraform6_vpc.id
-  cidr_block        = "10.0.2.0/24"
-  availability_zone = "us-east-1a"
-}
-
-resource "aws_subnet" "private_subnet2" {
-  vpc_id            = aws_vpc.terraform6_vpc.id
-  cidr_block        = "10.0.3.0/24"
-  availability_zone = "us-east-1b"
-}
-
-resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.terraform6_vpc.id
-
-}
-
-resource "aws_route_table" "public_rt" {
-  vpc_id = aws_vpc.terraform6_vpc.id
-  depends_on = [aws_internet_gateway.igw]
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.igw.id
-    }
-}
-
-resource "aws_route_table" "private_rt-1" {
-  vpc_id = aws_vpc.terraform6_vpc.id
-  depends_on = [aws_nat_gateway.natgw]
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.natgw.id
-    }
-}
-
-resource "aws_route_table" "private_rt-2" {
-  vpc_id = aws_vpc.terraform6_vpc.id
-  depends_on = [aws_nat_gateway.natgw2]
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.natgw2.id
-    }
-}
-
-resource "aws_route_table_association" "rta" {
-  subnet_id      = aws_subnet.public_subnet1.id
-  route_table_id = aws_route_table.public_rt.id
-}
-
-resource "aws_route_table_association" "rtb" {
-  subnet_id      = aws_subnet.public_subnet2.id
-  route_table_id = aws_route_table.public_rt.id
-}
-
-resource "aws_route_table_association" "rtc" {
-  subnet_id      = aws_subnet.private_subnet1.id
-  route_table_id = aws_route_table.private_rt-1.id
-}
-
-resource "aws_route_table_association" "rtd" {
-  subnet_id      = aws_subnet.private_subnet2.id
-  route_table_id = aws_route_table.private_rt-2.id
-}
-
-resource "aws_eip" "nat_eip" {
-  domain = "vpc"
-}
-
-resource "aws_nat_gateway" "natgw" {
-  subnet_id     = aws_subnet.public_subnet1.id
-  allocation_id = aws_eip.nat_eip.id
-}
-
-resource "aws_eip" "nat_eip2" {
-  domain = "vpc"
-}
-resource "aws_nat_gateway" "natgw2" {
-  allocation_id = aws_eip.nat_eip2.id
-  subnet_id     = aws_subnet.public_subnet2.id
-}
-
 # LOADBALANCER
 
 resource "aws_lb" "app_lb" {
@@ -114,8 +15,8 @@ resource "aws_lb" "app_lb" {
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb_app.id]
   subnets            = [
-    aws_subnet.public_subnet1.id,
-    aws_subnet.public_subnet2.id
+    module.vpc.public_subnet1_id,
+    module.vpc.public_subnet2_id
   ]
 
   enable_deletion_protection = false
@@ -129,7 +30,7 @@ resource "aws_lb_target_group" "app_tg" {
   name     = "app-tg"
   port     = 8000
   protocol = "HTTP"
-  vpc_id   = aws_vpc.terraform6_vpc.id
+  vpc_id   = module.vpc.vpc_id
   target_type = "instance"
 
     health_check {
@@ -160,7 +61,7 @@ resource "aws_lb_listener" "app_listener" {
 resource "aws_security_group" "bastion_ssh" {
   name        = "allow_ssh"
   description = "Allow SSH inbound traffic for bastion host from my IP"
-  vpc_id      = aws_vpc.terraform6_vpc.id
+  vpc_id      = module.vpc.vpc_id
 
   ingress {
     description      = "SSH from my-ip"
@@ -181,7 +82,7 @@ resource "aws_security_group" "bastion_ssh" {
 resource "aws_security_group" "private_instance_ssh" {
   name        = "allow_ssh_bastion"
   description = "Allow SSH inbound traffic for private instances"
-  vpc_id      = aws_vpc.terraform6_vpc.id
+  vpc_id      = module.vpc.vpc_id
 
   ingress {
     description      = "SSH from bastion host"
@@ -202,7 +103,7 @@ resource "aws_security_group" "private_instance_ssh" {
 resource "aws_security_group" "alb_app" {
   name        = "alb_app"
   description = "Allow HTTP inbound traffic for application server"
-  vpc_id      = aws_vpc.terraform6_vpc.id
+  vpc_id      = module.vpc.vpc_id
 
   ingress {
     description      = "HTTP from ALB"
@@ -223,7 +124,7 @@ resource "aws_security_group" "alb_app" {
 resource "aws_security_group" "allow_app" {
   name        = "allow_app"
   description = "Allow HTTP inbound traffic for application server"
-  vpc_id      = aws_vpc.terraform6_vpc.id
+  vpc_id      = module.vpc.vpc_id
 
   ingress {
     description      = "HTTP from VPC"
@@ -252,7 +153,7 @@ resource "aws_key_pair" "terraform_key" {
 resource "aws_instance" "bastion_host" {
   ami                    = "ami-0b6c6ebed2801a5cb" 
   instance_type          = "t2.micro"
-  subnet_id              = aws_subnet.public_subnet1.id
+  subnet_id              = module.vpc.public_subnet1_id
   key_name               = aws_key_pair.terraform_key.key_name
   vpc_security_group_ids = [aws_security_group.bastion_ssh.id]
 
@@ -285,8 +186,8 @@ resource "aws_launch_template" "asg" {
 resource "aws_autoscaling_group" "terraform-demo" {
 
   vpc_zone_identifier = [
-    aws_subnet.private_subnet1.id,
-    aws_subnet.private_subnet2.id
+    module.vpc.private_subnet1_id,
+    module.vpc.private_subnet2_id
   ]
   desired_capacity   = 2
   max_size           = 4
