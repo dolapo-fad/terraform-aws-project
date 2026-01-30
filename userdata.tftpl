@@ -1,0 +1,22 @@
+#!/bin/bash
+# Send output to logs for debugging
+exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
+
+apt-get update -y
+apt-get install -y python3
+
+# Define the target directory
+APP_DIR="/home/ubuntu/app"
+mkdir -p $APP_DIR
+
+# Write the HTML content passed from Terraform
+cat <<'EOF' > $APP_DIR/index.html
+${html_content}
+EOF
+
+# Set permissions
+chown -R ubuntu:ubuntu $APP_DIR
+cd $APP_DIR
+
+# Start the server (using & to run in background)
+nohup python3 -m http.server 8000 &
